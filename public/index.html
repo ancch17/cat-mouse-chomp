@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#12121c">
+<title>Cat &amp; Mouse Chomp</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧀</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="score">0</span></div>
+    <div class="hud-item"><span class="hud-label">High</span><span class="hud-value" id="high">0</span></div>
+    <div class="hud-item"><span class="hud-label">Level</span><span class="hud-value" id="level">1</span></div>
+    <div class="hud-item"><span class="hud-label">Lives</span><span class="hud-value" id="lives">🐭🐭🐭</span></div>
+    <button id="mute" type="button" aria-label="Toggle sound">🔊</button>
+  </header>
+  <main id="game-area">
+    <canvas id="game" width="504" height="552"></canvas>
+    <div id="overlay">
+      <div id="overlay-card">
+        <h1 id="ov-title">Cat &amp; Mouse Chomp</h1>
+        <p id="ov-msg">Eat all the cheese. Dodge the cats.<br>Grab the big cheese to turn the tables!</p>
+        <button id="ov-btn" type="button">Play</button>
+        <p id="ov-hint" class="hint"></p>
+      </div>
+    </div>
+    <div id="joystick" class="hidden" aria-hidden="true"><div id="stick"></div></div>
+  </main>
+</div>
+<script src="game.js"></script>
+</body>
+</html>

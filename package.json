@@ -1,0 +1,14 @@
+{
+  "name": "cat-and-mouse-chomp",
+  "version": "1.0.0",
+  "description": "A Pac-Man-style maze game: a mouse chomps cheese while dodging cats. Multi-level with procedurally generated mazes, keyboard + virtual joystick controls.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["game", "pacman", "maze", "canvas", "cat-and-mouse"],
+  "license": "MIT"
+}
