@@ -202,13 +202,22 @@ function generateLevel(level) {
   const denDist = bfs({ row: MID, col: CX });
 
   // --- pellets ---
+  // Early levels are sparse; the board fills up as the levels climb.
+  // Level 1 ≈ 38% of corridors hold cheese, +7% per level, full board by ~10.
   const pellets = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
   const reach = bfs(spawn);
-  let pelletTotal = 0;
+  const eligible = [];
   for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
     if (grid[r][c] !== 0 || reach[r][c] === -1) continue;
     if (r >= MID - 1 && r <= MID + 1 && c >= CX - 2 && c <= CX + 2) continue; // den
     if (r === spawn.row && c === spawn.col) continue;
+    eligible.push([r, c]);
+  }
+  const density = Math.min(0.38 + 0.07 * (level - 1), 1);
+  const keep = Math.max(40, Math.round(eligible.length * density));
+  shuffle(eligible, rng);
+  let pelletTotal = 0;
+  for (const [r, c] of eligible.slice(0, keep)) {
     pellets[r][c] = 1;
     pelletTotal++;
   }
@@ -248,6 +257,13 @@ const ui = {
   ovBtn: document.getElementById('ov-btn'),
   ovHint: document.getElementById('ov-hint'),
   mute: document.getElementById('mute'),
+  music: document.getElementById('music'),
+  lbOpen: document.getElementById('lb-open'),
+  lbBtn: document.getElementById('lb-btn'),
+  lbList: document.getElementById('lb-list'),
+  nameEntry: document.getElementById('name-entry'),
+  nameInput: document.getElementById('name-input'),
+  nameSave: document.getElementById('name-save'),
   joystick: document.getElementById('joystick'),
   stick: document.getElementById('stick'),
   area: document.getElementById('game-area')
@@ -482,6 +498,9 @@ function newGame() {
   game.score = 0;
   game.lives = 3;
   game.nextLifeAt = 10000;
+  scoreSaved = false;
+  ui.nameEntry.classList.add('hidden');
+  ui.lbList.classList.add('hidden');
   startLevel(1);
   setState('ready');
   updateHud();
@@ -499,9 +518,96 @@ function setState(s) {
   if (s === 'gameover') {
     ui.ovTitle.textContent = 'Game Over';
     ui.ovMsg.innerHTML = `Score: <b>${game.score}</b> &nbsp;·&nbsp; Level ${game.level}` +
-      (game.score >= game.high ? '<br>🏆 New high score!' : '');
+      (game.score >= game.high && game.score > 0 ? '<br>🏆 New high score!' : '');
     ui.ovBtn.textContent = 'Play Again';
+    ui.nameEntry.classList.add('hidden');
+    ui.lbList.classList.add('hidden');
+    maybeOfferNameEntry(game.score);
   }
+}
+
+/* ============================================================
+   Leaderboard — top 15, shared via the server when available,
+   localStorage when not (offline / file://).
+   ============================================================ */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function localLB() {
+  try {
+    const lb = JSON.parse(localStorage.getItem('cmc-lb') || '[]');
+    return Array.isArray(lb) ? lb : [];
+  } catch { return []; }
+}
+function saveLocalLB(lb) { localStorage.setItem('cmc-lb', JSON.stringify(lb)); }
+function mergeLB(lb, entry) {
+  lb.push(entry);
+  lb.sort((a, b) => b.score - a.score);
+  return lb.slice(0, 15);
+}
+
+async function fetchLeaderboard() {
+  try {
+    const r = await fetch('/api/leaderboard');
+    if (r.ok) {
+      const lb = await r.json();
+      if (Array.isArray(lb)) { saveLocalLB(lb); return lb; }
+    }
+  } catch { /* offline — fall back */ }
+  return localLB();
+}
+
+async function submitScore(name, score) {
+  try {
+    const r = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, score })
+    });
+    if (r.ok) {
+      const lb = await r.json();
+      if (Array.isArray(lb)) { saveLocalLB(lb); return lb; }
+    }
+  } catch { /* offline — fall back */ }
+  const lb = mergeLB(localLB(), { name, score });
+  saveLocalLB(lb);
+  return lb;
+}
+
+function renderLeaderboard(lb) {
+  ui.lbList.innerHTML = lb.length
+    ? lb.map((e, i) =>
+        `<li><span class="lb-rank">${i + 1}.</span>` +
+        `<span class="lb-name">${escapeHtml(e.name)}</span>` +
+        `<span class="lb-score">${Number(e.score) || 0}</span></li>`).join('')
+    : '<li class="lb-empty">No scores yet — be the first! 🧀</li>';
+}
+
+let scoreSaved = false;
+async function maybeOfferNameEntry(score) {
+  if (score <= 0 || scoreSaved) return;
+  const lb = await fetchLeaderboard();
+  if (game.state !== 'gameover') return; // player already moved on
+  if (lb.length < 15 || score > lb[lb.length - 1].score) {
+    ui.nameInput.value = localStorage.getItem('cmc-name') || '';
+    ui.nameEntry.classList.remove('hidden');
+    setTimeout(() => { try { ui.nameInput.focus(); } catch {} }, 60);
+  } else {
+    renderLeaderboard(lb);
+    ui.lbList.classList.remove('hidden');
+  }
+}
+
+async function saveScore() {
+  if (scoreSaved) return;
+  scoreSaved = true;
+  const name = (ui.nameInput.value || '').trim().slice(0, 12) || 'MOUSE';
+  localStorage.setItem('cmc-name', name);
+  ui.nameEntry.classList.add('hidden');
+  const lb = await submitScore(name, game.score);
+  renderLeaderboard(lb);
+  ui.lbList.classList.remove('hidden');
 }
 
 /* ---------- scoring ---------- */
@@ -738,7 +844,8 @@ function dirAngle(dir) {
 function drawMouse(x, y, dir, chompPhase, scale) {
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(dirAngle(dir));
+  if (dir === 'left') ctx.scale(-1, 1); // mirror instead of rotating — stays upright
+  else ctx.rotate(dirAngle(dir));
   ctx.scale(scale, scale);
   // tail
   ctx.strokeStyle = '#d99aa8';
@@ -909,7 +1016,8 @@ function draw() {
    Audio (tiny WebAudio synth)
    ============================================================ */
 let ac = null;
-let muted = localStorage.getItem('cmc-muted') === '1';
+let sfxMuted = localStorage.getItem('cmc-muted') === '1';
+let musicMuted = localStorage.getItem('cmc-music-muted') === '1';
 
 function ensureAudio() {
   if (!ac) {
@@ -919,8 +1027,22 @@ function ensureAudio() {
   if (ac && ac.state === 'suspended') ac.resume();
 }
 
+// low-level note scheduler (shared by sfx and music)
+function note(freq, when, dur, type, vol) {
+  if (!ac || freq <= 0) return;
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, when);
+  g.gain.setValueAtTime(vol, when);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  o.connect(g).connect(ac.destination);
+  o.start(when);
+  o.stop(when + dur + 0.02);
+}
+
 function tone(f0, f1, dur, type = 'square', vol = 0.06, when = 0) {
-  if (!ac || muted) return;
+  if (!ac || sfxMuted) return;
   const t0 = ac.currentTime + when;
   const o = ac.createOscillator();
   const g = ac.createGain();
@@ -934,6 +1056,39 @@ function tone(f0, f1, dur, type = 'square', vol = 0.06, when = 0) {
   o.stop(t0 + dur + 0.02);
 }
 
+/* ---------- background music: looping chiptune, speeds up per level ---------- */
+const MELODY = [ // MIDI notes, 8th-note steps, 4 bars in A minor (0 = rest)
+  69, 72, 76, 72, 69, 72, 76, 72,   // Am arpeggio
+  69, 72, 77, 72, 69, 72, 77, 72,   // F
+  72, 76, 79, 76, 72, 76, 79, 76,   // C
+  71, 76, 80, 76, 71, 74, 76, 0     // E (cadence)
+];
+const BASS = [
+  45, 0, 52, 0, 45, 0, 52, 0,
+  41, 0, 48, 0, 41, 0, 48, 0,
+  48, 0, 55, 0, 48, 0, 55, 0,
+  40, 0, 47, 0, 40, 47, 40, 0
+];
+function midiF(n) { return 440 * Math.pow(2, (n - 69) / 12); }
+
+let musicStep = 0, musicNext = 0;
+setInterval(() => {
+  if (!ac) return;
+  const active = !musicMuted && (game.state === 'ready' || game.state === 'playing' || game.state === 'clear');
+  if (!active) { musicNext = ac.currentTime + 0.1; return; }
+  if (musicNext < ac.currentTime) musicNext = ac.currentTime + 0.05;
+  const horizon = ac.currentTime + 0.25;
+  while (musicNext < horizon) {
+    const bpm = Math.min(112 + 4 * game.level, 168);
+    const dur = 30 / bpm; // 8th note
+    const i = musicStep % MELODY.length;
+    note(midiF(MELODY[i]), musicNext, dur * 0.85, 'triangle', 0.032);
+    note(midiF(BASS[i]), musicNext, dur * 0.9, 'square', 0.02);
+    musicNext += dur;
+    musicStep++;
+  }
+}, 60);
+
 let chompAlt = false;
 function sfxChomp()    { chompAlt = !chompAlt; tone(chompAlt ? 740 : 620, chompAlt ? 620 : 740, 0.05, 'square', 0.035); }
 function sfxPower()    { tone(180, 720, 0.3, 'sawtooth', 0.07); }
@@ -944,11 +1099,24 @@ function sfxLevelClear(){
   [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.14, 'triangle', 0.08, i * 0.13));
 }
 
-ui.mute.textContent = muted ? '🔇' : '🔊';
+function refreshAudioButtons() {
+  ui.mute.textContent = sfxMuted ? '🔇' : '🔊';
+  ui.mute.classList.toggle('off', sfxMuted);
+  ui.music.textContent = '🎶';
+  ui.music.classList.toggle('off', musicMuted);
+}
+refreshAudioButtons();
 ui.mute.addEventListener('click', () => {
-  muted = !muted;
-  localStorage.setItem('cmc-muted', muted ? '1' : '0');
-  ui.mute.textContent = muted ? '🔇' : '🔊';
+  sfxMuted = !sfxMuted;
+  localStorage.setItem('cmc-muted', sfxMuted ? '1' : '0');
+  ensureAudio();
+  refreshAudioButtons();
+});
+ui.music.addEventListener('click', () => {
+  musicMuted = !musicMuted;
+  localStorage.setItem('cmc-music-muted', musicMuted ? '1' : '0');
+  ensureAudio();
+  refreshAudioButtons();
 });
 
 /* ============================================================
@@ -975,7 +1143,45 @@ window.addEventListener('keydown', (e) => {
 
 ui.ovBtn.addEventListener('click', () => {
   ensureAudio();
-  newGame();
+  if (game.state === 'paused') {
+    ui.lbList.classList.add('hidden');
+    setState('playing');
+  } else {
+    newGame();
+  }
+});
+
+/* leaderboard buttons */
+ui.lbBtn.addEventListener('click', async () => {
+  ensureAudio();
+  if (ui.lbList.classList.contains('hidden')) {
+    renderLeaderboard(await fetchLeaderboard());
+    ui.lbList.classList.remove('hidden');
+  } else {
+    ui.lbList.classList.add('hidden');
+  }
+});
+
+ui.lbOpen.addEventListener('click', async () => {
+  ensureAudio();
+  if (game.state === 'playing' || game.state === 'ready') {
+    setState('paused');
+    ui.ovTitle.textContent = 'Leaderboard';
+    ui.ovMsg.textContent = 'Top 15 mice of all time';
+    ui.ovBtn.textContent = 'Resume';
+    ui.nameEntry.classList.add('hidden');
+    renderLeaderboard(await fetchLeaderboard());
+    ui.lbList.classList.remove('hidden');
+  } else if (game.state === 'menu' || game.state === 'gameover') {
+    ui.lbBtn.click();
+  }
+});
+
+/* name entry */
+ui.nameSave.addEventListener('click', saveScore);
+ui.nameInput.addEventListener('keydown', (e) => {
+  e.stopPropagation(); // typing must not steer the mouse or restart the game
+  if (e.key === 'Enter') saveScore();
 });
 
 /* virtual joystick: appears wherever the finger lands, slide to steer */
@@ -1036,7 +1242,7 @@ ui.area.addEventListener('touchcancel', joyEnd);
 
 /* ---------- responsive canvas ---------- */
 function fitCanvas() {
-  const hudH = document.getElementById('hud').offsetHeight;
+  const hudH = document.getElementById('top-bar').offsetHeight;
   const availW = window.innerWidth - 12;
   const availH = window.innerHeight - hudH - 14;
   const scale = Math.min(availW / W, availH / H);
@@ -1059,7 +1265,7 @@ updateHud();
 fitCanvas();
 
 // debug/testing handle
-window.CMC = { game, generateLevel };
+window.CMC = { game, generateLevel, setState, fetchLeaderboard, renderLeaderboard };
 
 let last = performance.now();
 function frame(now) {

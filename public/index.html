@@ -4,26 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#12121c">
-<title>Cat &amp; Mouse Chomp</title>
+<title>Andrew's Cat &amp; Mouse Chomp</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧀</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app">
-  <header id="hud">
-    <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="score">0</span></div>
-    <div class="hud-item"><span class="hud-label">High</span><span class="hud-value" id="high">0</span></div>
-    <div class="hud-item"><span class="hud-label">Level</span><span class="hud-value" id="level">1</span></div>
-    <div class="hud-item"><span class="hud-label">Lives</span><span class="hud-value" id="lives">🐭🐭🐭</span></div>
-    <button id="mute" type="button" aria-label="Toggle sound">🔊</button>
+  <header id="top-bar">
+    <h1 id="game-title">Andrew's Cat &amp; Mouse Chomp</h1>
+    <div id="hud">
+      <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="score">0</span></div>
+      <div class="hud-item"><span class="hud-label">High</span><span class="hud-value" id="high">0</span></div>
+      <div class="hud-item"><span class="hud-label">Level</span><span class="hud-value" id="level">1</span></div>
+      <div class="hud-item"><span class="hud-label">Lives</span><span class="hud-value" id="lives">🐭🐭🐭</span></div>
+      <div class="hud-buttons">
+        <button id="lb-open" class="icon-btn" type="button" aria-label="Show leaderboard" title="Leaderboard">🏆</button>
+        <button id="music" class="icon-btn" type="button" aria-label="Toggle music" title="Music on/off">🎶</button>
+        <button id="mute" class="icon-btn" type="button" aria-label="Toggle sound effects" title="Sound effects on/off">🔊</button>
+      </div>
+    </div>
   </header>
   <main id="game-area">
     <canvas id="game" width="504" height="552"></canvas>
     <div id="overlay">
       <div id="overlay-card">
-        <h1 id="ov-title">Cat &amp; Mouse Chomp</h1>
+        <h1 id="ov-title">Andrew's Cat &amp; Mouse Chomp</h1>
         <p id="ov-msg">Eat all the cheese. Dodge the cats.<br>Grab the big cheese to turn the tables!</p>
+        <div id="name-entry" class="hidden">
+          <p class="lb-congrats">🎉 You made the leaderboard!</p>
+          <div class="name-row">
+            <input id="name-input" maxlength="12" placeholder="Your name" autocomplete="off">
+            <button id="name-save" type="button">Save</button>
+          </div>
+        </div>
+        <ol id="lb-list" class="hidden"></ol>
         <button id="ov-btn" type="button">Play</button>
+        <button id="lb-btn" class="btn-secondary" type="button">🏆 Leaderboard</button>
         <p id="ov-hint" class="hint"></p>
       </div>
     </div>
