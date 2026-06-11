@@ -7,9 +7,11 @@ while a pack of **cats** hunts you down.
 
 - **Procedurally generated mazes** — every level gets a brand-new, symmetric,
   fully connected maze (seeded, so level N always looks the same for everyone).
+- **Growing arena** — level 1 is a compact 13×13 maze packed edge-to-edge with
+  cheese; the maze perimeter expands every level (up to 21×23), so more cheese
+  always means a bigger playfield — never empty corridors.
 - **Escalating difficulty** — each level adds more cats, faster cats, smarter
-  pathfinding, shorter power-ups, and extra side tunnels. Cheese starts sparse
-  (~38% of corridors on level 1) and grows ~7% per level until the board is full.
+  pathfinding, shorter power-ups, and extra side tunnels.
 - **Power cheese** — grab the big wedge to turn the tables and chomp the cats
   (200 / 400 / 800 / 1600 point chains).
 - **Cat personalities** — direct chaser, ambusher, flanker, and a wildcard, with
@@ -17,8 +19,9 @@ while a pack of **cats** hunts you down.
 - **Desktop controls** — arrow keys or WASD.
 - **Mobile controls** — a floating virtual joystick: touch anywhere and slide
   your finger to steer.
-- **Music & sound** — looping chiptune soundtrack that speeds up with each level,
-  with separate music and sound-effects toggle buttons.
+- **Music & sound** — a different chiptune tune is composed for every level
+  (seeded: new key, chord progression, and melody each level, tempo rising as
+  you go), with separate music and sound-effects toggle buttons.
 - **Top-15 leaderboard** — beat a leaderboard score and enter your name. Scores
   are shared via the server (`/api/leaderboard`) so everyone playing your deployed
   URL competes on one board; falls back to localStorage when offline. The 🏆

@@ -6,10 +6,20 @@
    ============================================================ */
 
 /* ---------- constants ---------- */
-const COLS = 21, ROWS = 23, T = 24;
-const W = COLS * T, H = ROWS * T;
-const MID = (ROWS - 1) / 2;          // center row (11)
-const CX = (COLS - 1) / 2;           // center col (10)
+const T = 24;
+// The maze grows with the level: small and dense early, expanding to 21x23.
+// These are reassigned by generateLevel/applyDims for the current maze.
+let COLS = 13, ROWS = 13;
+let W = COLS * T, H = ROWS * T;
+let MID = (ROWS - 1) / 2;            // center row
+let CX = (COLS - 1) / 2;             // center col
+
+function mazeSize(level) {
+  return {
+    cols: Math.min(13 + 2 * Math.floor(level / 2), 21),
+    rows: Math.min(13 + 2 * Math.floor((level - 1) / 2), 23)
+  };
+}
 const DIRS = { up:{x:0,y:-1}, down:{x:0,y:1}, left:{x:-1,y:0}, right:{x:1,y:0} };
 const OPP  = { up:'down', down:'up', left:'right', right:'left' };
 const DKEYS = ['up','down','left','right'];
@@ -47,8 +57,13 @@ const MOUSE_SPEED = 4.2;
    loops added, dead ends removed, guaranteed fully connected.
    ============================================================ */
 function generateLevel(level) {
+  const { cols, rows } = mazeSize(level);
+  COLS = cols; ROWS = rows;
+  W = COLS * T; H = ROWS * T;
+  MID = (ROWS - 1) / 2; CX = (COLS - 1) / 2;
+
   const rng = mulberry32(level * 7349 + 1013);
-  const HW = CX + 1; // half width incl. center column (11)
+  const HW = CX + 1; // half width incl. center column
 
   // --- carve a maze on the left half with recursive backtracker ---
   const half = Array.from({ length: ROWS }, () => Array(HW).fill(1));
@@ -202,22 +217,15 @@ function generateLevel(level) {
   const denDist = bfs({ row: MID, col: CX });
 
   // --- pellets ---
-  // Early levels are sparse; the board fills up as the levels climb.
-  // Level 1 ≈ 38% of corridors hold cheese, +7% per level, full board by ~10.
+  // Every corridor cell holds cheese — compact boards, no empty stretches.
+  // More cheese per level comes from the maze itself growing (mazeSize).
   const pellets = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
   const reach = bfs(spawn);
-  const eligible = [];
+  let pelletTotal = 0;
   for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
     if (grid[r][c] !== 0 || reach[r][c] === -1) continue;
     if (r >= MID - 1 && r <= MID + 1 && c >= CX - 2 && c <= CX + 2) continue; // den
     if (r === spawn.row && c === spawn.col) continue;
-    eligible.push([r, c]);
-  }
-  const density = Math.min(0.38 + 0.07 * (level - 1), 1);
-  const keep = Math.max(40, Math.round(eligible.length * density));
-  shuffle(eligible, rng);
-  let pelletTotal = 0;
-  for (const [r, c] of eligible.slice(0, keep)) {
     pellets[r][c] = 1;
     pelletTotal++;
   }
@@ -233,7 +241,7 @@ function generateLevel(level) {
     if (best) pellets[best[0]][best[1]] = 2;
   }
 
-  return { grid, pellets, pelletTotal, spawn, denDist, tunnelRows, level };
+  return { grid, pellets, pelletTotal, spawn, denDist, tunnelRows, level, cols: COLS, rows: ROWS };
 }
 
 /* ============================================================
@@ -469,8 +477,21 @@ function catSpeedNow(cat) {
 }
 
 /* ---------- level / game setup ---------- */
+function applyDims(maze) {
+  COLS = maze.cols; ROWS = maze.rows;
+  W = COLS * T; H = ROWS * T;
+  MID = (ROWS - 1) / 2; CX = (COLS - 1) / 2;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  fitCanvas();
+}
+
 function startLevel(level) {
   game.maze = generateLevel(level);
+  applyDims(game.maze);
+  composeMusic(level);
+  musicStep = 0;
   game.wallHue = (200 + level * 47) % 360;
   let n = 0;
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (game.maze.pellets[r][c] > 0) n++;
@@ -1056,20 +1077,50 @@ function tone(f0, f1, dur, type = 'square', vol = 0.06, when = 0) {
   o.stop(t0 + dur + 0.02);
 }
 
-/* ---------- background music: looping chiptune, speeds up per level ---------- */
-const MELODY = [ // MIDI notes, 8th-note steps, 4 bars in A minor (0 = rest)
-  69, 72, 76, 72, 69, 72, 76, 72,   // Am arpeggio
-  69, 72, 77, 72, 69, 72, 77, 72,   // F
-  72, 76, 79, 76, 72, 76, 79, 76,   // C
-  71, 76, 80, 76, 71, 74, 76, 0     // E (cadence)
-];
-const BASS = [
-  45, 0, 52, 0, 45, 0, 52, 0,
-  41, 0, 48, 0, 41, 0, 48, 0,
-  48, 0, 55, 0, 48, 0, 55, 0,
-  40, 0, 47, 0, 40, 47, 40, 0
-];
+/* ---------- background music ----------
+   A fresh tune is composed for every level: seeded by the level number,
+   so each level has its own key, chord progression, and melody — and the
+   tempo climbs as the levels do. */
+let MELODY = [], BASS = [];
 function midiF(n) { return 440 * Math.pow(2, (n - 69) / 12); }
+
+function composeMusic(level) {
+  const rng = mulberry32(level * 9176 + 271);
+  const root = 55 + ((level * 7) % 12);            // key walks the circle of fifths
+  const minor = rng() < 0.5;
+  const scale = minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  const progressions = [
+    [0, 5, 3, 4], [0, 3, 4, 0], [0, 5, 1, 4],
+    [0, 2, 5, 4], [0, 4, 1, 4], [0, 3, 1, 4]
+  ];
+  const prog = progressions[(rng() * progressions.length) | 0];
+  MELODY = []; BASS = [];
+  for (const deg of prog) {
+    const chord = [0, 2, 4].map(o => {
+      const d = deg + o;
+      return scale[d % 7] + 12 * Math.floor(d / 7);
+    });
+    for (let s = 0; s < 8; s++) { // one bar = eight 8th-note steps
+      if (s === 0) {
+        MELODY.push(root + 12 + chord[0]); // ground each bar on the chord root
+      } else if (rng() < 0.78) {
+        let n = chord[(rng() * chord.length) | 0];
+        if (rng() < 0.25) n += 12;
+        let midi = root + 12 + n;
+        while (midi > 95) midi -= 12; // keep the melody out of shrill territory
+        MELODY.push(midi);
+      } else {
+        MELODY.push(0); // rest
+      }
+      if (s % 2 === 0) {
+        const fifth = s % 4 === 2;
+        BASS.push(root - 12 + scale[deg % 7] + (fifth ? 7 : 0));
+      } else {
+        BASS.push(0);
+      }
+    }
+  }
+}
 
 let musicStep = 0, musicNext = 0;
 setInterval(() => {
@@ -1082,8 +1133,8 @@ setInterval(() => {
     const bpm = Math.min(112 + 4 * game.level, 168);
     const dur = 30 / bpm; // 8th note
     const i = musicStep % MELODY.length;
-    note(midiF(MELODY[i]), musicNext, dur * 0.85, 'triangle', 0.032);
-    note(midiF(BASS[i]), musicNext, dur * 0.9, 'square', 0.02);
+    if (MELODY[i] > 0) note(midiF(MELODY[i]), musicNext, dur * 0.85, 'triangle', 0.032);
+    if (BASS[i] > 0) note(midiF(BASS[i]), musicNext, dur * 0.9, 'square', 0.02);
     musicNext += dur;
     musicStep++;
   }
@@ -1257,15 +1308,14 @@ ui.ovHint.textContent = isTouch
   ? 'Touch and slide anywhere to steer with the joystick'
   : 'Arrow keys or WASD to move · Enter to start';
 
-game.maze = generateLevel(1);   // so the menu has a maze behind it
-game.wallHue = (200 + 47) % 360;
-resetPositions();
-prerenderMaze();
+startLevel(1);                  // so the menu has a maze behind it
 updateHud();
-fitCanvas();
 
 // debug/testing handle
-window.CMC = { game, generateLevel, setState, fetchLeaderboard, renderLeaderboard };
+window.CMC = {
+  game, generateLevel, setState, fetchLeaderboard, renderLeaderboard,
+  composeMusic, getMusic: () => ({ melody: MELODY.slice(), bass: BASS.slice() })
+};
 
 let last = performance.now();
 function frame(now) {
