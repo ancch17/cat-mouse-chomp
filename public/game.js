@@ -62,7 +62,9 @@ function generateLevel(level) {
   W = COLS * T; H = ROWS * T;
   MID = (ROWS - 1) / 2; CX = (COLS - 1) / 2;
 
-  const rng = mulberry32(level * 7349 + 1013);
+  // Seeded per level AND per run: every new game rolls a fresh runSeed, so
+  // the level layouts are different from the previous playthrough.
+  const rng = mulberry32(level * 7349 + game.runSeed);
   const HW = CX + 1; // half width incl. center column
 
   // --- carve a maze on the left half with recursive backtracker ---
@@ -213,6 +215,38 @@ function generateLevel(level) {
     if (fixed) break;
   }
 
+  // --- eliminate every remaining dead end (tunnel wrap counts as a way out) ---
+  const wrapC = (c) => ((c % COLS) + COLS) % COLS;
+  const openCount = (r, c) => {
+    let n = 0;
+    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const nr = r + dr;
+      if (nr < 0 || nr >= ROWS) continue;
+      if (grid[nr][wrapC(c + dc)] === 0) n++;
+    }
+    return n;
+  };
+  for (let pass = 0; pass < 50; pass++) {
+    let fixed = 0;
+    for (let r = 1; r < ROWS - 1; r++) for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] !== 0 || openCount(r, c) > 1) continue;
+      const cand = [];
+      for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        const wr = r + dr, wc = c + dc, fr = r + 2 * dr, fc = c + 2 * dc;
+        if (wr < 1 || wr >= ROWS - 1 || wc < 1 || wc >= COLS - 1) continue;
+        if (fr < 0 || fr >= ROWS || fc < 0 || fc >= COLS) continue;
+        if (grid[wr][wc] === 1 && grid[fr][fc] === 0) cand.push([wr, wc]);
+      }
+      if (cand.length) {
+        const [wr, wc] = cand[(rng() * cand.length) | 0];
+        grid[wr][wc] = 0;
+        grid[wr][COLS - 1 - wc] = 0; // keep left/right symmetry
+        fixed++;
+      }
+    }
+    if (!fixed) break;
+  }
+
   // --- distance-to-den map (for "eyes" returning home) ---
   const denDist = bfs({ row: MID, col: CX });
 
@@ -281,6 +315,7 @@ const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
 const game = {
   state: 'menu',          // menu | ready | playing | dying | clear | gameover
+  runSeed: (Math.random() * 0x7fffffff) | 0, // re-rolled every new game
   level: 1,
   score: 0,
   high: Number(localStorage.getItem('cmc-high') || 0),
@@ -492,7 +527,7 @@ function startLevel(level) {
   applyDims(game.maze);
   composeMusic(level);
   musicStep = 0;
-  game.wallHue = (200 + level * 47) % 360;
+  game.wallHue = (200 + level * 47 + game.runSeed % 97) % 360;
   let n = 0;
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (game.maze.pellets[r][c] > 0) n++;
   game.pelletsLeft = n;
@@ -515,6 +550,7 @@ function resetPositions() {
 }
 
 function newGame() {
+  game.runSeed = (Math.random() * 0x7fffffff) | 0; // fresh maze designs every run
   game.level = 1;
   game.score = 0;
   game.lives = 3;

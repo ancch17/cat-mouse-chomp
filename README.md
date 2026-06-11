@@ -6,7 +6,9 @@ while a pack of **cats** hunts you down.
 ## Features
 
 - **Procedurally generated mazes** — every level gets a brand-new, symmetric,
-  fully connected maze (seeded, so level N always looks the same for everyone).
+  fully connected maze with **no dead ends**. Each new game rolls a fresh seed,
+  so after a game over the whole run is a different set of layouts than the
+  last one.
 - **Growing arena** — level 1 is a compact 13×13 maze packed edge-to-edge with
   cheese; the maze perimeter expands every level (up to 21×23), so more cheese
   always means a bigger playfield — never empty corridors.
@@ -65,9 +67,9 @@ railway domain
 
 - `server.js` — tiny zero-dependency static file server (serves `public/`)
   plus a JSON leaderboard API (`GET`/`POST /api/leaderboard`, top 15).
-- `public/game.js` — the whole game: seeded maze generation (recursive
-  backtracker + dead-end removal + loop carving + mirror symmetry +
-  connectivity repair), tile-to-tile movement, cat AI, rendering, audio, input.
+- `public/game.js` — the whole game: per-run seeded maze generation (recursive
+  backtracker + loop carving + mirror symmetry + connectivity repair + full
+  dead-end elimination), tile-to-tile movement, cat AI, rendering, audio, input.
 
 ## License
 
