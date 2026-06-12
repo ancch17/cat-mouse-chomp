@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, 'public');
@@ -105,10 +106,18 @@ http.createServer((req, res) => {
     }
     const ext = path.extname(file).toLowerCase();
     const type = MIME[ext] || 'application/octet-stream';
+    // no-cache + ETag: browsers revalidate every load but get a tiny 304
+    // when nothing changed — deploys reach players immediately, repeat
+    // visits stay cheap on mobile.
+    const etag = '"' + crypto.createHash('md5').update(data).digest('hex').slice(0, 16) + '"';
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
+      return res.end();
+    }
     const headers = {
       'Content-Type': type,
-      // HTML revalidates so deploys show up immediately; js/css cache briefly.
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=600'
+      'Cache-Control': 'no-cache',
+      'ETag': etag
     };
     const compressible = /^text\/|json|javascript|svg/.test(type);
     const acceptsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
