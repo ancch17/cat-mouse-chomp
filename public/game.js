@@ -598,7 +598,15 @@ function localLB() {
   } catch { return []; }
 }
 const LB_MAX = 7;
-function saveLocalLB(lb) { localStorage.setItem('cmc-lb', JSON.stringify(lb)); }
+function saveLocalLB(lb) {
+  localStorage.setItem('cmc-lb', JSON.stringify(lb));
+  // The HUD "High" mirrors the top of the leaderboard (the true game record),
+  // raised live by your current run if you're beating it.
+  const top = lb.length ? Number(lb[0].score) || 0 : 0;
+  localStorage.setItem('cmc-high', String(top));
+  game.high = Math.max(top, game.score);
+  updateHud();
+}
 function mergeLB(lb, entry) {
   lb.push(entry);
   lb.sort((a, b) => b.score - a.score);
@@ -683,8 +691,7 @@ function addScore(n) {
     sfxExtraLife();
   }
   if (game.score > game.high) {
-    game.high = game.score;
-    localStorage.setItem('cmc-high', String(game.high));
+    game.high = game.score; // beating the record live; the board sync persists it
   }
   updateHud();
 }
@@ -1366,6 +1373,7 @@ ui.ovHint.textContent = isTouch
 
 startLevel(1);                  // so the menu has a maze behind it
 updateHud();
+fetchLeaderboard();             // sync the HUD "High" with the shared board
 
 // debug/testing handle
 window.CMC = {
