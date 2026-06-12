@@ -24,10 +24,11 @@ while a pack of **cats** hunts you down.
 - **Music & sound** — a different chiptune tune is composed for every level
   (seeded: new key, chord progression, and melody each level, tempo rising as
   you go), with separate music and sound-effects toggle buttons.
-- **Top-15 leaderboard** — beat a leaderboard score and enter your name. Scores
-  are shared via the server (`/api/leaderboard`) so everyone playing your deployed
-  URL competes on one board; falls back to localStorage when offline. The 🏆
-  button shows the board any time (it pauses the game).
+- **Top-7 leaderboard** — beat a leaderboard score and enter your name; the
+  board shows Name, Level reached, and Score. Shared via the server
+  (`/api/leaderboard`) so everyone playing your deployed URL competes on one
+  board; falls back to localStorage when offline. The 🏆 button shows the
+  board any time (it pauses the game).
 - **Extras** — high score persistence, extra life every 10,000 points,
   wrap-around tunnels.
 
@@ -65,8 +66,9 @@ railway domain
 
 ## How it works
 
-- `server.js` — tiny zero-dependency static file server (serves `public/`)
-  plus a JSON leaderboard API (`GET`/`POST /api/leaderboard`, top 15).
+- `server.js` — tiny zero-dependency static file server (serves `public/`,
+  gzip-compressed with sensible caching) plus a JSON leaderboard API
+  (`GET`/`POST /api/leaderboard`, top 7).
 - `public/game.js` — the whole game: per-run seeded maze generation (recursive
   backtracker + loop carving + mirror symmetry + connectivity repair + full
   dead-end elimination), tile-to-tile movement, cat AI, rendering, audio, input.

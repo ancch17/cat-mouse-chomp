@@ -204,8 +204,19 @@ html, body {
 #lb-list li:nth-child(3) .lb-rank { color: #d89a6a; }
 .lb-rank { width: 26px; text-align: right; color: #8b8ba6; font-weight: 700; }
 .lb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lb-score { color: #ffd24a; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lb-level { width: 42px; text-align: center; color: #9fd4ff; font-variant-numeric: tabular-nums; }
+.lb-score { min-width: 52px; text-align: right; color: #ffd24a; font-weight: 700; font-variant-numeric: tabular-nums; }
 .lb-empty { justify-content: center; color: #8b8ba6; }
+.lb-head {
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8b8ba6;
+}
+.lb-head .lb-name, .lb-head .lb-level, .lb-head .lb-score {
+  color: #8b8ba6;
+  font-weight: 600;
+}
 
 #joystick {
   position: fixed;

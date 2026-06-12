@@ -597,11 +597,12 @@ function localLB() {
     return Array.isArray(lb) ? lb : [];
   } catch { return []; }
 }
+const LB_MAX = 7;
 function saveLocalLB(lb) { localStorage.setItem('cmc-lb', JSON.stringify(lb)); }
 function mergeLB(lb, entry) {
   lb.push(entry);
   lb.sort((a, b) => b.score - a.score);
-  return lb.slice(0, 15);
+  return lb.slice(0, LB_MAX);
 }
 
 async function fetchLeaderboard() {
@@ -615,28 +616,34 @@ async function fetchLeaderboard() {
   return localLB();
 }
 
-async function submitScore(name, score) {
+async function submitScore(name, score, level) {
   try {
     const r = await fetch('/api/leaderboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, score })
+      body: JSON.stringify({ name, score, level })
     });
     if (r.ok) {
       const lb = await r.json();
       if (Array.isArray(lb)) { saveLocalLB(lb); return lb; }
     }
   } catch { /* offline — fall back */ }
-  const lb = mergeLB(localLB(), { name, score });
+  const lb = mergeLB(localLB(), { name, score, level });
   saveLocalLB(lb);
   return lb;
 }
 
 function renderLeaderboard(lb) {
+  const head =
+    '<li class="lb-head"><span class="lb-rank"></span>' +
+    '<span class="lb-name">Name</span>' +
+    '<span class="lb-level">Level</span>' +
+    '<span class="lb-score">Score</span></li>';
   ui.lbList.innerHTML = lb.length
-    ? lb.map((e, i) =>
+    ? head + lb.map((e, i) =>
         `<li><span class="lb-rank">${i + 1}.</span>` +
         `<span class="lb-name">${escapeHtml(e.name)}</span>` +
+        `<span class="lb-level">${Number(e.level) > 0 ? Number(e.level) : '–'}</span>` +
         `<span class="lb-score">${Number(e.score) || 0}</span></li>`).join('')
     : '<li class="lb-empty">No scores yet — be the first! 🧀</li>';
 }
@@ -646,7 +653,7 @@ async function maybeOfferNameEntry(score) {
   if (score <= 0 || scoreSaved) return;
   const lb = await fetchLeaderboard();
   if (game.state !== 'gameover') return; // player already moved on
-  if (lb.length < 15 || score > lb[lb.length - 1].score) {
+  if (lb.length < LB_MAX || score > lb[lb.length - 1].score) {
     ui.nameInput.value = localStorage.getItem('cmc-name') || '';
     ui.nameEntry.classList.remove('hidden');
     setTimeout(() => { try { ui.nameInput.focus(); } catch {} }, 60);
@@ -662,7 +669,7 @@ async function saveScore() {
   const name = (ui.nameInput.value || '').trim().slice(0, 12) || 'MOUSE';
   localStorage.setItem('cmc-name', name);
   ui.nameEntry.classList.add('hidden');
-  const lb = await submitScore(name, game.score);
+  const lb = await submitScore(name, game.score, game.level);
   renderLeaderboard(lb);
   ui.lbList.classList.remove('hidden');
 }
@@ -1073,13 +1080,26 @@ function draw() {
    Audio (tiny WebAudio synth)
    ============================================================ */
 let ac = null;
+let masterOut = null; // boosted master bus -> compressor -> speakers
 let sfxMuted = localStorage.getItem('cmc-muted') === '1';
 let musicMuted = localStorage.getItem('cmc-music-muted') === '1';
 
 function ensureAudio() {
   if (!ac) {
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (AC) ac = new AC();
+    if (AC) {
+      ac = new AC();
+      // Raw oscillator gains are kept low to mix cleanly, then boosted here.
+      // The compressor stops the boost from clipping when notes overlap.
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -18;
+      comp.knee.value = 12;
+      comp.ratio.value = 6;
+      masterOut = ac.createGain();
+      masterOut.gain.value = 3.4;
+      masterOut.connect(comp);
+      comp.connect(ac.destination);
+    }
   }
   if (ac && ac.state === 'suspended') ac.resume();
 }
@@ -1093,7 +1113,7 @@ function note(freq, when, dur, type, vol) {
   o.frequency.setValueAtTime(freq, when);
   g.gain.setValueAtTime(vol, when);
   g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-  o.connect(g).connect(ac.destination);
+  o.connect(g).connect(masterOut);
   o.start(when);
   o.stop(when + dur + 0.02);
 }
@@ -1108,7 +1128,7 @@ function tone(f0, f1, dur, type = 'square', vol = 0.06, when = 0) {
   o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), t0 + dur);
   g.gain.setValueAtTime(vol, t0);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  o.connect(g).connect(ac.destination);
+  o.connect(g).connect(masterOut);
   o.start(t0);
   o.stop(t0 + dur + 0.02);
 }
@@ -1254,7 +1274,7 @@ ui.lbOpen.addEventListener('click', async () => {
   if (game.state === 'playing' || game.state === 'ready') {
     setState('paused');
     ui.ovTitle.textContent = 'Leaderboard';
-    ui.ovMsg.textContent = 'Top 15 mice of all time';
+    ui.ovMsg.textContent = 'Top 7 mice of all time';
     ui.ovBtn.textContent = 'Resume';
     ui.nameEntry.classList.add('hidden');
     renderLeaderboard(await fetchLeaderboard());

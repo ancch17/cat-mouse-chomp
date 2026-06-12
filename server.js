@@ -3,6 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, 'public');
@@ -11,12 +12,16 @@ const ROOT = path.join(__dirname, 'public');
 // (e.g. /data) if you want scores to survive redeploys.
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const LB_FILE = path.join(DATA_DIR, 'leaderboard.json');
-const LB_MAX = 15;
+const LB_MAX = 7;
 
 let leaderboard = [];
 try {
   const parsed = JSON.parse(fs.readFileSync(LB_FILE, 'utf8'));
-  if (Array.isArray(parsed)) leaderboard = parsed;
+  if (Array.isArray(parsed)) {
+    leaderboard = parsed
+      .sort((a, b) => b.score - a.score)
+      .slice(0, LB_MAX); // trim boards saved under the old, larger cap
+  }
 } catch { /* no saved board yet */ }
 
 function persistLeaderboard() {
@@ -52,7 +57,8 @@ function handleLeaderboard(req, res) {
       if (!Number.isFinite(score) || score < 0 || score > 99999999) {
         return sendJson(res, 400, { error: 'bad score' });
       }
-      leaderboard.push({ name, score });
+      const level = Math.min(Math.max(Math.floor(Number(entry && entry.level)) || 1, 1), 999);
+      leaderboard.push({ name, level, score });
       leaderboard.sort((a, b) => b.score - a.score);
       leaderboard = leaderboard.slice(0, LB_MAX);
       persistLeaderboard();
@@ -97,11 +103,27 @@ http.createServer((req, res) => {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       return res.end('Not found');
     }
-    res.writeHead(200, {
-      'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-cache'
-    });
-    res.end(data);
+    const ext = path.extname(file).toLowerCase();
+    const type = MIME[ext] || 'application/octet-stream';
+    const headers = {
+      'Content-Type': type,
+      // HTML revalidates so deploys show up immediately; js/css cache briefly.
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=600'
+    };
+    const compressible = /^text\/|json|javascript|svg/.test(type);
+    const acceptsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    if (compressible && acceptsGzip) {
+      zlib.gzip(data, (gzErr, gz) => {
+        if (gzErr) { res.writeHead(200, headers); return res.end(data); }
+        headers['Content-Encoding'] = 'gzip';
+        headers['Vary'] = 'Accept-Encoding';
+        res.writeHead(200, headers);
+        res.end(gz);
+      });
+    } else {
+      res.writeHead(200, headers);
+      res.end(data);
+    }
   });
 }).listen(PORT, () => {
   console.log(`Cat & Mouse Chomp running on port ${PORT}`);
