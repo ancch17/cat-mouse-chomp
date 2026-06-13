@@ -1378,7 +1378,14 @@ fetchLeaderboard();             // sync the HUD "High" with the shared board
 // debug/testing handle
 window.CMC = {
   game, generateLevel, setState, fetchLeaderboard, renderLeaderboard,
-  composeMusic, getMusic: () => ({ melody: MELODY.slice(), bass: BASS.slice() })
+  composeMusic, getMusic: () => ({ melody: MELODY.slice(), bass: BASS.slice() }),
+  resetLeaderboard: async () => {
+    const r = await fetch('/api/leaderboard', { method: 'DELETE' });
+    const lb = await r.json();
+    saveLocalLB(lb);
+    renderLeaderboard(lb);
+    return 'Leaderboard cleared!';
+  }
 };
 
 let last = performance.now();

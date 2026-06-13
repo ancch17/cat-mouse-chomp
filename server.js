@@ -15,38 +15,32 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const LB_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const LB_MAX = 7;
 
-// Increment LB_GENERATION to wipe the leaderboard on the next deploy,
-// even when the DATA_DIR is on a persistent volume.
-const LB_GENERATION = 2;
+// Bump LB_GENERATION to wipe the board on the next deploy (works even with
+// a persistent volume, because the stamp file lives alongside the data).
+const LB_GENERATION = 3;
 const LB_GEN_FILE = path.join(DATA_DIR, '.lb_generation');
 
 let leaderboard = [];
-try {
-  const parsed = JSON.parse(fs.readFileSync(LB_FILE, 'utf8'));
-  if (Array.isArray(parsed)) {
-    leaderboard = parsed
-      .sort((a, b) => b.score - a.score)
-      .slice(0, LB_MAX);
-  }
-} catch { /* no saved board yet */ }
-
-// Wipe board if generation stamp is behind the current constant.
-try {
-  const savedGen = parseInt(fs.readFileSync(LB_GEN_FILE, 'utf8')) || 0;
+(function initLeaderboard() {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+  // Check generation stamp first — wipe everything if behind.
+  let savedGen = 0;
+  try { savedGen = parseInt(fs.readFileSync(LB_GEN_FILE, 'utf8')) || 0; } catch {}
   if (savedGen < LB_GENERATION) {
     leaderboard = [];
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(LB_FILE, '[]');
-    fs.writeFileSync(LB_GEN_FILE, String(LB_GENERATION));
+    try { fs.writeFileSync(LB_FILE, '[]'); } catch {}
+    try { fs.writeFileSync(LB_GEN_FILE, String(LB_GENERATION)); } catch {}
     console.log(`Leaderboard wiped — generation ${LB_GENERATION}`);
+    return;
   }
-} catch {
-  // No generation file yet — write it now (board is already empty from above).
+  // Load existing board.
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(LB_GEN_FILE, String(LB_GENERATION));
-  } catch { /* non-fatal */ }
-}
+    const parsed = JSON.parse(fs.readFileSync(LB_FILE, 'utf8'));
+    if (Array.isArray(parsed)) {
+      leaderboard = parsed.sort((a, b) => b.score - a.score).slice(0, LB_MAX);
+    }
+  } catch {}
+}());
 
 function persistLeaderboard() {
   try {
@@ -89,6 +83,13 @@ function handleLeaderboard(req, res) {
       return sendJson(res, 200, leaderboard);
     });
     return;
+  }
+
+  if (req.method === 'DELETE') {
+    leaderboard = [];
+    persistLeaderboard();
+    console.log('Leaderboard cleared via DELETE /api/leaderboard');
+    return sendJson(res, 200, []);
   }
 
   sendJson(res, 405, { error: 'method not allowed' });
