@@ -15,15 +15,38 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const LB_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const LB_MAX = 7;
 
+// Increment LB_GENERATION to wipe the leaderboard on the next deploy,
+// even when the DATA_DIR is on a persistent volume.
+const LB_GENERATION = 2;
+const LB_GEN_FILE = path.join(DATA_DIR, '.lb_generation');
+
 let leaderboard = [];
 try {
   const parsed = JSON.parse(fs.readFileSync(LB_FILE, 'utf8'));
   if (Array.isArray(parsed)) {
     leaderboard = parsed
       .sort((a, b) => b.score - a.score)
-      .slice(0, LB_MAX); // trim boards saved under the old, larger cap
+      .slice(0, LB_MAX);
   }
 } catch { /* no saved board yet */ }
+
+// Wipe board if generation stamp is behind the current constant.
+try {
+  const savedGen = parseInt(fs.readFileSync(LB_GEN_FILE, 'utf8')) || 0;
+  if (savedGen < LB_GENERATION) {
+    leaderboard = [];
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(LB_FILE, '[]');
+    fs.writeFileSync(LB_GEN_FILE, String(LB_GENERATION));
+    console.log(`Leaderboard wiped — generation ${LB_GENERATION}`);
+  }
+} catch {
+  // No generation file yet — write it now (board is already empty from above).
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(LB_GEN_FILE, String(LB_GENERATION));
+  } catch { /* non-fatal */ }
+}
 
 function persistLeaderboard() {
   try {
